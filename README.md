@@ -1,4 +1,4 @@
 EasyStorm
 =========
 
-storm automate deploy
+storm automate  deploy
