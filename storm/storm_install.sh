@@ -1,16 +1,6 @@
 #!/bin/bash
 #export JAVA_HOME=${JAVA_HOME:/usr/libexec/java_home}
 
-if [ ! -d "$JAVA_HOME/include" ]; then
-    echo "
-Looks like you're missing your 'include' directory. If you're using Mac OS X, You'll need to install the Java dev package.
-
-- Navigate to http://goo.gl/D8lI
-- Click the Java tab on the right
-- Install the appropriate version and try again.
-"
-    exit -1;
-fi
 
 
 Usage(){
@@ -83,18 +73,23 @@ then
 echo "the config file must be a readable file in the directory $conf_dir"
 exit -1
 fi
+done
 #end of testing config file
 
+user=`cat $conf_dir/parameters.conf | grep ^user= | sed 's/^user=//g'`
+java_version=`cat $conf_dir/parameters.conf | grep ^java_version | sed 's/^java_version=//g'`
+java_url=`cat $conf_dir/parameters.conf | grep ^java_url | sed 's/^java_url=//g' | sed 's/$java_version/'$java_version'/g'`
 python_version=`cat $conf_dir/parameters.conf | grep ^python_version | sed 's/^python_version=//g'`
-python_url=`cat $conf_dir/parameters.conf | grep ^python_url | sed 's/^python_url=//g'`
+python_url=`cat $conf_dir/parameters.conf | grep ^python_url | sed 's/^python_url=//g' | sed 's/$python_version/'$python_version'/g'`
 install_path=`cat $conf_dir/parameters.conf | grep ^install_path | sed 's/^install_path=//g'`
 storm_conf=$conf_dir/storm-conf.yaml
 storm_version=`cat $conf_dir/parameters.conf | grep ^storm_version | sed 's/^storm_version=//g'`
-storm_url=`cat $conf_dir/parameters.conf | grep ^storm_url | sed 's/^storm_url=//g'`
+storm_url=`cat $conf_dir/parameters.conf | grep ^storm_url | sed 's/^storm_url=//g' | sed 's/$storm_version/'$storm_version'/g'`
 zeromq_version=`cat $conf_dir/parameters.conf | grep ^zeromq_version | sed 's/^zeromq_version=//g'`
-zeromq_url=`cat $conf_dir/parameters.conf | grep ^zeromq_url | sed 's/^zeromq_url=//g'`
+zeromq_url=`cat $conf_dir/parameters.conf | grep ^zeromq_url | sed 's/^zeromq_url=//g' | sed 's/$zeromq_version/'$zeromq_version'/g'`
 jzmq_url=`cat $conf_dir/parameters.conf | grep ^jzmq_url | sed 's/^jzmq_url=//g'`
 storm_hostnames=`cat $conf_dir/storm | awk '{printf("%s ",$1)}'`
+hostname=`hostname`
 
 isHost=0
 for n in $storm_hostnames;do
@@ -109,6 +104,36 @@ then
 exit 0
 fi
 
+sudo mkdir -p $install_path
+source /etc/profile
+source ~/.bashrc
+if [ ! -d "$JAVA_HOME/include" ]; then
+    echo "
+Looks like you're missing your 'include' directory. If you're using Mac OS X, You'll need to install the Java dev package.
+
+- Navigate to http://goo.gl/D8lI
+- Click the Java tab on the right
+- Install the appropriate version and try again.
+"
+rm -rf install_tmp
+mkdir -p install_tmp
+cd install_tmp
+wget $java_url --no-check-certificate
+mv * jdk-$java_version.bin
+sudo chmod +x jdk-$java_version.bin
+sudo ./jdk-$java_version.bin
+rm -rf jdk-$java_version.bin
+sudo mv * $install_path/java-$java_version
+cd ../
+rm -rf install_tmp
+sudo chmod 666 /etc/profile
+cat >> /etc/profile << EOF
+export JAVA_HOME=$install_path/java-$java_version
+export PATH=\$PATH:\$JAVA_HOME/bin
+EOF
+sudo chmod 644 /etc/profile
+source /etc/profile
+fi
 
 
 
@@ -133,15 +158,6 @@ rm -rf Python-$python_version
 fi
 
 
-yum install gcc*
-yum install uuid*
-yum install e2fsprogs*
-yum install libuuid*
-yum install libtool*
-
-
-
-
 #install zeromq
 if [ $code -eq 1 -o $code -eq 0 ]
 then
@@ -151,6 +167,18 @@ getSource $zeromq_url zeromq-$zeromq_version
 fi
 cd zeromq-$zeromq_version
 ./configure
+if [ $? -ne 0 ]
+then
+sudo yum install -y e2fsprogs-libs
+sudo yum install -y  e2fsprogs-devel
+./configure
+fi
+if [ $? -ne 0 ]
+then
+sudo yum install -y gcc
+sudo yum install -y gcc-c++
+./configure
+fi
 make
 sudo make install
 if [ $? -ne 0 ]
@@ -173,6 +201,11 @@ getSource $jzmq_url jzmq
 fi
 cd jzmq
 ./autogen.sh
+if [ $? -ne 0 ]
+then
+sudo yum install -y libtool*
+./autogen.sh
+fi
 ./configure
 make
 sudo make install
@@ -197,17 +230,19 @@ fi
 #end of test storm source file
 unzip storm-$storm_version.zip
 rm -rf storm-$storm_version.zip
-mkdir -p $install_path/storm_servers
-mv storm-$storm_version $install_path/storm_servers
-ln -s $install_path/storm_servers/storm-$storm_version $install_path/storm
-chown -R admin:admin $install_path/storm_servers/storm-$storm_version $install_path/storm
+sudo mkdir -p $install_path/storm_servers
+sudo mv storm-$storm_version $install_path/storm_servers
+sudo ln -s $install_path/storm_servers/storm-$storm_version $install_path/storm
+sudo chown -R $user:$user $install_path/storm_servers/storm-$storm_version $install_path/storm
 cd $home
 cat > $install_path/storm/conf/storm.yaml << EOF
-`cat $storm_config`
+`cat $storm_conf`
 EOF
+sudo chmod 666 /etc/profile
 cat >> /etc/profile << EOF
 export STORM_HOME=$install_path/storm
 export PATH=\$PATH:\$STORM_HOME/bin
 EOF
+sudo chmod 644 /etc/profile
 fi
 #end of install storm
