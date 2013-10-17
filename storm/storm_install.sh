@@ -129,7 +129,7 @@ rm -rf install_tmp
 sudo chmod 666 /etc/profile
 cat >> /etc/profile << EOF
 export JAVA_HOME=$install_path/java-$java_version
-export PATH=\$PATH:\$JAVA_HOME/bin
+export PATH=\$JAVA_HOME/bin:\$PATH
 EOF
 sudo chmod 644 /etc/profile
 source /etc/profile
